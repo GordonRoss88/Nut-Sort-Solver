@@ -1,9 +1,8 @@
-package Nut_Sort_Solver
+package main
 
 import (
 	"io"
 	"log"
-	"nuts/hello"
 	"os"
 	"strings"
 )
@@ -11,7 +10,6 @@ import (
 func main() {
 	initialState := loadFile("test.nuts")
 	log.Println(string(initialState))
-	hello.Hello()
 }
 
 func loadFile(path string) []byte {
