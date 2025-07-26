@@ -47,9 +47,15 @@ func loadFile(path string) State {
 		log.Printf("State length not divisible by 4!\n%s", string(inputLine))
 	}
 	state2d := make([][]byte, len(inputLine)/4)
-	for i := 0; i*4 < len(inputLine); i++ {
-		state2d[i] = inputLine[i*4 : i*4+4]
+
+	for boltNumber := 0; boltNumber < len(inputLine)/4; boltNumber++ {
+		start := boltNumber * 4
+		end := boltNumber*4 + 4
+		state2d[boltNumber] = inputLine[start:end]
 	}
+	//for i := 0; i*4 < len(inputLine); i++ {
+	//	state2d[i] = inputLine[i*4 : i*4+4]
+	//}
 	state := State{
 		nuts: state2d,
 	}
