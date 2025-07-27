@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+const NutsPerBolt = 4
+const EmptyStartingBolts = 2
+
 type State struct {
 	nuts [][]byte
 }
@@ -41,14 +44,14 @@ func loadFile(path string) State {
 	inputString := strings.ReplaceAll(string(buffer), "\n", "")
 	inputString = strings.ReplaceAll(inputString, " ", "")
 	inputLine := []byte(inputString)
-	twoBolts := [8]byte{0, 0, 0, 0, 0, 0, 0, 0}
+	twoBolts := [NutsPerBolt * EmptyStartingBolts]byte{0}
 	inputLine = append(inputLine, twoBolts[:]...)
 	if len(inputLine)%4 != 0 {
-		log.Printf("State length not divisible by 4!\n%s", string(inputLine))
+		log.Printf("State length not divisible by nuts per bolt!\n%s", string(inputLine))
 	}
-	state2d := make([][]byte, len(inputLine)/4)
-	for i := 0; i*4 < len(inputLine); i++ {
-		state2d[i] = inputLine[i*4 : i*4+4]
+	state2d := make([][]byte, len(inputLine)/NutsPerBolt)
+	for bolt, nut := 0, 0; bolt < len(state2d); bolt, nut = bolt+1, nut+NutsPerBolt {
+		state2d[bolt] = inputLine[nut : nut+NutsPerBolt]
 	}
 	state := State{
 		nuts: state2d,
