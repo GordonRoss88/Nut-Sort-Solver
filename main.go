@@ -28,7 +28,7 @@ type SwapAction struct {
 var solved chan *State
 
 func main() {
-	initialState := loadFile("test2.nuts")
+	initialState := loadFile("test.nuts")
 	initialState.printState()
 	solved = make(chan *State)
 	initialState.solve()
@@ -114,28 +114,10 @@ func (s *State) doAllSwaps() {
 	log.Printf("newDoAll")
 	s.printState()
 	fmt.Printf("\n")
+
 	for srcIndex, srcBolt := range s.nuts {
 
-		srcCount := 0
-		numBlanks := 0
-		willLeaveBlank := false
-		var srcNutType byte = 0
-		for nutIndex, nut := range srcBolt {
-			if srcNutType == 0 && nut != 0 {
-				srcNutType = nut
-				if nutIndex != 0 {
-					numBlanks = nutIndex
-				}
-			}
-			if srcNutType != 0 && nut != srcNutType {
-				srcCount = nutIndex
-				break
-			}
-			if nutIndex == 3 {
-				srcCount = 4
-				willLeaveBlank = true
-			}
-		}
+		srcCount, numBlanks, willLeaveBlank, srcNutType := s.topNuts(srcBolt)
 		if srcCount == 4 && numBlanks == 0 {
 			continue
 		}
@@ -159,7 +141,7 @@ func (s *State) doAllSwaps() {
 			if destNutType == 0 && willLeaveBlank {
 				continue
 			}
-			if (destNutType != 0 && destNutType != srcNutType) || srcCount-numBlanks > lastBlank+1 {
+			if (destNutType != 0 && destNutType != srcNutType) || lastBlank+1 < srcCount-numBlanks {
 				continue
 			}
 
@@ -177,10 +159,32 @@ func (s *State) doAllSwaps() {
 				break
 			}
 			newState.solve()
-			//didSwap = true
-			return
 		}
 	}
+}
+
+func (s *State) topNuts(srcBolt [4]byte) (int, int, bool, byte) {
+	srcCount := 0
+	numBlanks := 0
+	willLeaveBlank := false
+	var srcNutType byte = 0
+	for nutIndex, nut := range srcBolt {
+		if srcNutType == 0 && nut != 0 {
+			srcNutType = nut
+			if nutIndex != 0 {
+				numBlanks = nutIndex
+			}
+		}
+		if srcNutType != 0 && nut != srcNutType {
+			srcCount = nutIndex
+			break
+		}
+		if nutIndex == 3 {
+			srcCount = 4
+			willLeaveBlank = true
+		}
+	}
+	return srcCount, numBlanks, willLeaveBlank, srcNutType
 }
 
 func (s *State) isSolved() bool {
