@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 const NutsPerBolt = 4
@@ -25,9 +26,14 @@ type State struct {
 func main() {
 	initialState := loadFile("test.nuts")
 	initialState.printState()
-	play(initialState)
+	start := time.Now()
+	fmt.Printf("%d\n", time.Since(start).Milliseconds())
+	numWins := 0
+	minSteps := 50
+	play(initialState, start, &numWins, &minSteps)
+	fmt.Printf("done %d %d %d\n", numWins, minSteps, time.Since(start).Milliseconds())
 }
-func play(state State) {
+func play(state State, start time.Time, pNumWins *int, pMinSteps *int) {
 	didSwap := false
 	for boltStart := 0; boltStart < len(state.nuts); boltStart++ {
 		for boltEnd := 0; boltEnd < len(state.nuts); boltEnd++ {
@@ -36,12 +42,15 @@ func play(state State) {
 				if swapCount > 0 {
 					didSwap = true
 					newState := State{
-						nuts:  append(state.nuts, [][NutsPerBolt]byte{}...),
-						swaps: append(state.swaps, createSwap(boltStart, boltEnd)),
+						nuts:  make([][NutsPerBolt]byte, len(state.nuts)),
+						swaps: make([]Swap, len(state.swaps)),
 					}
-					swapCount = getSwapCount(&state, boltStart, boltEnd)
+					copy(newState.nuts, state.nuts)
+					copy(newState.swaps, state.swaps)
+					newState.swaps = append(newState.swaps, createSwap(boltStart, boltEnd))
+
 					swap(&newState, boltStart, boltEnd, swapCount)
-					play(newState)
+					play(newState, start, pNumWins, pMinSteps)
 				}
 			}
 		}
@@ -49,7 +58,11 @@ func play(state State) {
 
 	if didSwap == false {
 		if gameWon(&state) {
-			fmt.Println("win")
+			(*pNumWins)++
+			if len(state.swaps) < *pMinSteps {
+				*pMinSteps = len(state.swaps)
+				fmt.Printf("%d %d %d\n", time.Since(start).Milliseconds(), *pNumWins, len(state.swaps))
+			}
 		}
 	}
 }
@@ -121,6 +134,7 @@ func swap(pState *State, boltStart int, boltEnd int, count int) {
 			break
 		}
 	}
+	//pState.printState()
 }
 
 func gameWon(pState *State) bool {
@@ -167,12 +181,11 @@ func loadFile(path string) State {
 }
 
 func (s *State) printState() {
+	fmt.Printf("%d ", len(s.swaps))
 	for _, bolt := range s.nuts {
 		zero := [...]byte{0}
 		stringBolt := string(bytes.ReplaceAll(bolt[:], zero[:], []byte("_")))
 		fmt.Printf("%s\t", stringBolt)
 	}
-}
-func (s *State) swap(src int, dst int, count int) {
-
+	fmt.Println("")
 }
