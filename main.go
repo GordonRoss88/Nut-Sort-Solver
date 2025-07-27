@@ -21,14 +21,6 @@ func main() {
 	initialState.printState()
 }
 
-func (s *State) printState() {
-	for _, bolt := range s.nuts {
-		zero := [...]byte{0}
-		stringBolt := string(bytes.ReplaceAll(bolt, zero[:], []byte("_")))
-		fmt.Printf("%s\t", stringBolt)
-	}
-}
-
 func loadFile(path string) State {
 	file, err := os.Open(path)
 	if err != nil {
@@ -53,11 +45,19 @@ func loadFile(path string) State {
 	for bolt, nut := 0, 0; bolt < len(state2d); bolt, nut = bolt+1, nut+NutsPerBolt {
 		state2d[bolt] = inputLine[nut : nut+NutsPerBolt]
 	}
-	//for i := 0; i*4 < len(inputLine); i++ {
-	//	state2d[i] = inputLine[i*4 : i*4+4]
-	//}
 	state := State{
 		nuts: state2d,
 	}
 	return state
+}
+
+func (s *State) printState() {
+	for _, bolt := range s.nuts {
+		zero := [...]byte{0}
+		stringBolt := string(bytes.ReplaceAll(bolt, zero[:], []byte("_")))
+		fmt.Printf("%s\t", stringBolt)
+	}
+}
+func (s *State) swap(src int, dst int, count int) {
+
 }
