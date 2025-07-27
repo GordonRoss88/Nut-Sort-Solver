@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
+	"time"
 )
 
 const NutsPerBolt = 4
@@ -27,12 +29,26 @@ type SwapAction struct {
 
 var solved chan *State
 
+var wg = new(sync.WaitGroup)
+var solutions = 0
+
 func main() {
 	initialState := loadFile("test.nuts")
 	initialState.printState()
 	solved = make(chan *State)
-	initialState.solve()
 
+	const maxConcurrentGoroutines = 34
+
+	var limiter = make(chan struct{}, maxConcurrentGoroutines)
+
+	go func() {
+		initialState.solve(limiter)
+	}()
+	//wg.Wait()
+	for {
+		time.Sleep(time.Second)
+		log.Printf("found: %d solutions", solutions)
+	}
 	//finalState := <-solved
 	//log.Println("Solved!")
 	//finalState.printState()
@@ -76,19 +92,29 @@ func (s *State) printState() {
 		fmt.Printf("%s\t", stringBolt)
 	}
 	fmt.Printf("\n")
+	for _, swap := range s.swaps {
+		fmt.Printf("%d>%d  ", swap.src, swap.dst)
+	}
 }
 
-func (s *State) solve() {
-	//go func() {
-	s.doAllSwaps()
-	//}()
+func (s *State) solve(limiter chan struct{}) {
+
+	limiter <- struct{}{}
+	go func() {
+		//defer wg.Done()
+
+		s.doAllSwaps(limiter)
+	}()
 }
 
 func (s *State) doSwap(swap SwapAction) *State {
-
 	newState := State{
-		nuts:  append(s.nuts, [][4]byte{}...),
+		nuts:  make([][4]byte, len(s.nuts)),
 		swaps: append(s.swaps, swap),
+	}
+
+	for i := 0; i < len(newState.nuts); i++ {
+		newState.nuts[i] = s.nuts[i]
 	}
 
 	for numSwapped := 0; numSwapped < swap.count; numSwapped++ {
@@ -103,17 +129,10 @@ func (s *State) doSwap(swap SwapAction) *State {
 		newState.nuts[swap.dst][dstNut] = newState.nuts[swap.src][srcNut]
 		newState.nuts[swap.src][srcNut] = 0
 	}
-	newState.printState()
-
 	return &newState
 }
 
-func (s *State) doAllSwaps() {
-	//didSwap:=false
-	fmt.Printf("\n")
-	log.Printf("newDoAll")
-	s.printState()
-	fmt.Printf("\n")
+func (s *State) doAllSwaps(limiter chan struct{}) {
 
 	for srcIndex, srcBolt := range s.nuts {
 
@@ -154,13 +173,17 @@ func (s *State) doAllSwaps() {
 			newState := s.doSwap(swap)
 			if newState.isSolved() {
 				//solved <- newState
-				log.Printf("SOLVED")
-				newState.printState()
+				solutions++
+				//log.Printf("SOLVED")
+				//newState.printState()
 				break
 			}
-			newState.solve()
+			<-limiter
+
+			newState.solve(limiter)
 		}
 	}
+	<-limiter
 }
 
 func (s *State) topNuts(srcBolt [4]byte) (int, int, bool, byte) {
