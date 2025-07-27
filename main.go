@@ -10,7 +10,7 @@ import (
 )
 
 const NutsPerBolt = 4
-const EmptyStartingBolts = 3
+const EmptyStartingBolts = 2
 const EmptyNut = 0
 
 type Swap struct {
