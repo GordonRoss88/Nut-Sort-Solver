@@ -65,7 +65,7 @@ func getSwapCount(pState *State, boltStart int, boltEnd int) int {
 	if countStart > 0 && countEnd > 0 &&
 		countEnd >= countStart && countStart != NutsPerBolt &&
 		(countEnd == NutsPerBolt || topNutColor == pState.nuts[boltEnd][countEnd]) {
-		if position == countStart && countEnd == NutsPerBolt {
+		if position+countStart == NutsPerBolt && countEnd == NutsPerBolt {
 			return 0
 		}
 		return countStart
