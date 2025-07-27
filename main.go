@@ -53,6 +53,9 @@ func loadFile(path string) State {
 	for bolt, nut := 0, 0; bolt < len(state2d); bolt, nut = bolt+1, nut+NutsPerBolt {
 		state2d[bolt] = inputLine[nut : nut+NutsPerBolt]
 	}
+	//for i := 0; i*4 < len(inputLine); i++ {
+	//	state2d[i] = inputLine[i*4 : i*4+4]
+	//}
 	state := State{
 		nuts: state2d,
 	}
