@@ -6,13 +6,15 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"strings"
-	"sync"
 	"time"
+	"unsafe"
 )
 
 const NutsPerBolt = 4
 const EmptyStartingBolts = 2
+const NumBolts = 14
 
 type State struct {
 	nuts    [][4]byte
@@ -27,31 +29,68 @@ type SwapAction struct {
 	destStart int
 }
 
-var solved chan *State
+type NutOrdering [NumBolts][4]byte
 
-var wg = new(sync.WaitGroup)
+type MapValue struct {
+	previous  NutOrdering
+	swapCount int
+}
+
+// const map
+var stateMap = make(map[NutOrdering]MapValue, 10000)
+
+var pendingOrders chan NutOrdering
+var solved chan NutOrdering
 var solutions = 0
 
 func main() {
 	initialState := loadFile("test.nuts")
-	initialState.printState()
-	solved = make(chan *State)
+	//initialState.printState()
+	solved = make(chan NutOrdering, 1)
+	pendingOrders = make(chan NutOrdering, 1000)
 
-	const maxConcurrentGoroutines = 34
+	ord := NutOrdering(initialState.nuts)
+	//NutOrdering(initialState.nuts)
+	ord = sortNutOrdering(ord)
+	stateMap[ord] = MapValue{
+		swapCount: 0,
+	}
+	//log.Printf(stateMap)
+	test := stateMap[ord].previous
+	log.Printf("%s", test[0])
+	pendingOrders <- ord
 
-	var limiter = make(chan struct{}, maxConcurrentGoroutines)
-
-	go func() {
-		initialState.solve(limiter)
-	}()
-	//wg.Wait()
+	work()
+	solutionPrinter()
 	for {
 		time.Sleep(time.Second)
 		log.Printf("found: %d solutions", solutions)
 	}
-	//finalState := <-solved
-	//log.Println("Solved!")
-	//finalState.printState()
+}
+
+func printSolution(order NutOrdering) {
+	fmt.Printf("%d\t", stateMap[order].swapCount)
+	printState(order)
+	if stateMap[order].previous != order {
+		printSolution(stateMap[order].previous)
+	}
+}
+func solutionPrinter() {
+	go func() {
+		for {
+			newSolution := <-solved
+			printSolution(newSolution)
+		}
+	}()
+}
+func work() {
+	go func() {
+		for {
+			newOrder := <-pendingOrders
+			log.Printf("newOrder: %d", len(pendingOrders))
+			doAllSwaps(newOrder)
+		}
+	}()
 }
 
 func loadFile(path string) State {
@@ -85,63 +124,61 @@ func loadFile(path string) State {
 	return state
 }
 
-func (s *State) printState() {
-	for _, bolt := range s.nuts {
+func printState(order NutOrdering) {
+	for _, bolt := range order {
 		zero := [...]byte{0}
 		stringBolt := string(bytes.ReplaceAll(bolt[:], zero[:], []byte("_")))
 		fmt.Printf("%s\t", stringBolt)
 	}
 	fmt.Printf("\n")
-	for _, swap := range s.swaps {
-		fmt.Printf("%d>%d  ", swap.src, swap.dst)
-	}
+	//for _, swap := range s.swaps {
+	//	fmt.Printf("%d>%d  ", swap.src, swap.dst)
+	//}
 }
 
-func (s *State) solve(limiter chan struct{}) {
+func doSwap(nutOrdering NutOrdering, swap SwapAction) NutOrdering {
+	//nutOrdering :=
+	//newState := State{
+	//	nuts:  make([][4]byte, len(nutOrdering)),
+	//	//swaps: append(s.swaps, swap),
+	//}
 
-	limiter <- struct{}{}
-	go func() {
-		//defer wg.Done()
-
-		s.doAllSwaps(limiter)
-	}()
-}
-
-func (s *State) doSwap(swap SwapAction) *State {
-	newState := State{
-		nuts:  make([][4]byte, len(s.nuts)),
-		swaps: append(s.swaps, swap),
-	}
-
-	for i := 0; i < len(newState.nuts); i++ {
-		newState.nuts[i] = s.nuts[i]
-	}
+	//for i := 0; i < len(nutOrdering); i++ {
+	//	nutOrdering[i] = nutOrdering[i]
+	//}
 
 	for numSwapped := 0; numSwapped < swap.count; numSwapped++ {
 		srcNut := (swap.count - 1) - numSwapped
 		dstNut := swap.destStart - numSwapped
 		if dstNut < 0 {
-			if newState.nuts[swap.src][srcNut] != 0 {
+			if nutOrdering[swap.src][srcNut] != 0 {
 				log.Printf("ran out of dest spots")
 			}
 			break
 		}
-		newState.nuts[swap.dst][dstNut] = newState.nuts[swap.src][srcNut]
-		newState.nuts[swap.src][srcNut] = 0
+		nutOrdering[swap.dst][dstNut] = nutOrdering[swap.src][srcNut]
+		nutOrdering[swap.src][srcNut] = 0
 	}
-	return &newState
+	return nutOrdering
 }
 
-func (s *State) doAllSwaps(limiter chan struct{}) {
+func doAllSwaps(nutOrdering NutOrdering) {
 
-	for srcIndex, srcBolt := range s.nuts {
+	if isSolved(nutOrdering) {
+		solved <- nutOrdering
+		solutions++
+		//log.Printf("SOLVED") a
+		//newState.printState()
+		return
+	}
+	for srcIndex, srcBolt := range nutOrdering {
 
-		srcCount, numBlanks, willLeaveBlank, srcNutType := s.topNuts(srcBolt)
+		srcCount, numBlanks, willLeaveBlank, srcNutType := topNuts(srcBolt)
 		if srcCount == 4 && numBlanks == 0 {
 			continue
 		}
 
-		for destIndex, destBolt := range s.nuts {
+		for destIndex, destBolt := range nutOrdering {
 			if srcIndex == destIndex || destBolt[0] != 0 {
 				continue
 			}
@@ -170,23 +207,43 @@ func (s *State) doAllSwaps(limiter chan struct{}) {
 				count:     srcCount,
 				destStart: lastBlank,
 			}
-			newState := s.doSwap(swap)
-			if newState.isSolved() {
-				//solved <- newState
-				solutions++
-				//log.Printf("SOLVED")
-				//newState.printState()
-				break
-			}
-			<-limiter
+			newNutOrdering := doSwap(nutOrdering, swap)
 
-			newState.solve(limiter)
+			newNutOrdering = sortNutOrdering(newNutOrdering)
+			addNewOrder(newNutOrdering, nutOrdering)
+			//newState.solve(limiter)
 		}
 	}
-	<-limiter
 }
 
-func (s *State) topNuts(srcBolt [4]byte) (int, int, bool, byte) {
+func addNewOrder(nutOrdering NutOrdering, previous NutOrdering) {
+	_, preexists := stateMap[nutOrdering]
+	if !preexists {
+		stateMap[nutOrdering] = MapValue{
+			previous:  previous,
+			swapCount: stateMap[previous].swapCount + 1,
+		}
+		pendingOrders <- nutOrdering
+	} else {
+		if stateMap[previous].swapCount+1 < stateMap[nutOrdering].swapCount {
+			stateMap[nutOrdering] = MapValue{
+				previous:  previous,
+				swapCount: stateMap[previous].swapCount + 1,
+			}
+		}
+	}
+}
+
+func sortNutOrdering(nutOrdering NutOrdering) NutOrdering {
+	nutsAsInts := (*[NumBolts]uint32)(unsafe.Pointer(&nutOrdering[0][0]))[:]
+
+	sort.Slice(nutsAsInts, func(i, j int) bool { return nutsAsInts[i] < nutsAsInts[j] })
+
+	sortedOrder := (*[NumBolts][4]byte)(unsafe.Pointer(&nutsAsInts[0]))[:]
+	return NutOrdering(sortedOrder)
+}
+
+func topNuts(srcBolt [4]byte) (int, int, bool, byte) {
 	srcCount := 0
 	numBlanks := 0
 	willLeaveBlank := false
@@ -210,8 +267,8 @@ func (s *State) topNuts(srcBolt [4]byte) (int, int, bool, byte) {
 	return srcCount, numBlanks, willLeaveBlank, srcNutType
 }
 
-func (s *State) isSolved() bool {
-	for _, bolt := range s.nuts {
+func isSolved(order NutOrdering) bool {
+	for _, bolt := range order {
 		for nut := 0; nut < 4; nut++ {
 			if bolt[0] != bolt[nut] {
 				return false
