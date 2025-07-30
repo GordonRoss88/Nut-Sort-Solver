@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,34 +35,81 @@ func main() {
 	fmt.Printf("done %d %d %d\n", numWins, minSteps, time.Since(start).Milliseconds())
 }
 func play(state State, start time.Time, pNumWins *int, pMinSteps *int) {
-	didSwap := false
-	for boltStart := 0; boltStart < len(state.nuts); boltStart++ {
-		for boltEnd := 0; boltEnd < len(state.nuts); boltEnd++ {
-			if boltStart != boltEnd {
-				swapCount := getSwapCount(&state, boltStart, boltEnd)
-				if swapCount > 0 {
-					didSwap = true
-					newState := State{
-						nuts:  make([][NutsPerBolt]byte, len(state.nuts)),
-						swaps: make([]Swap, len(state.swaps)),
-					}
-					copy(newState.nuts, state.nuts)
-					copy(newState.swaps, state.swaps)
-					newState.swaps = append(newState.swaps, createSwap(boltStart, boltEnd))
+	var waitGroup sync.WaitGroup
+	if len(state.swaps) < *pMinSteps {
+		didSwap := false
+		for boltStart := 0; boltStart < len(state.nuts); boltStart++ {
+			for boltEnd := 0; boltEnd < len(state.nuts); boltEnd++ {
+				if boltStart != boltEnd {
+					fmt.Printf("%d %d\n", boltStart, boltEnd)
+					swapCount := getSwapCount(&state, boltStart, boltEnd)
+					if swapCount > 0 {
+						didSwap = true
+						newState := State{
+							nuts:  make([][NutsPerBolt]byte, len(state.nuts)),
+							swaps: make([]Swap, len(state.swaps)),
+						}
+						copy(newState.nuts, state.nuts)
+						copy(newState.swaps, state.swaps)
+						newState.swaps = append(newState.swaps, createSwap(boltStart, boltEnd))
 
-					swap(&newState, boltStart, boltEnd, swapCount)
-					play(newState, start, pNumWins, pMinSteps)
+						swap(&newState, boltStart, boltEnd, swapCount)
+						waitGroup.Add(1)
+						go play2(newState, start, pNumWins, pMinSteps, &waitGroup)
+					}
+				}
+			}
+		}
+
+		if didSwap == false {
+			if gameWon(&state) {
+				(*pNumWins)++
+				if len(state.swaps) < *pMinSteps {
+					*pMinSteps = len(state.swaps)
+					fmt.Printf("%d %d %d\n", time.Since(start).Milliseconds(), *pNumWins, len(state.swaps))
 				}
 			}
 		}
 	}
+	waitGroup.Wait()
+}
+func play2(state State, start time.Time, pNumWins *int, pMinSteps *int, pWaitGroup *sync.WaitGroup) {
+	play3(state, start, pNumWins, pMinSteps)
+	pWaitGroup.Done()
+	println("done")
+}
+func play3(state State, start time.Time, pNumWins *int, pMinSteps *int) {
+	if len(state.swaps) < *pMinSteps {
+		didSwap := false
+		for boltStart := 0; boltStart < len(state.nuts); boltStart++ {
+			for boltEnd := 0; boltEnd < len(state.nuts); boltEnd++ {
+				if boltStart != boltEnd {
+					swapCount := getSwapCount(&state, boltStart, boltEnd)
+					if swapCount > 0 {
+						didSwap = true
+						newState := State{
+							nuts:  make([][NutsPerBolt]byte, len(state.nuts)),
+							swaps: make([]Swap, len(state.swaps)),
+						}
+						copy(newState.nuts, state.nuts)
+						copy(newState.swaps, state.swaps)
+						newState.swaps = append(newState.swaps, createSwap(boltStart, boltEnd))
 
-	if didSwap == false {
-		if gameWon(&state) {
-			(*pNumWins)++
-			if len(state.swaps) < *pMinSteps {
-				*pMinSteps = len(state.swaps)
-				fmt.Printf("%d %d %d\n", time.Since(start).Milliseconds(), *pNumWins, len(state.swaps))
+						swap(&newState, boltStart, boltEnd, swapCount)
+						play3(newState, start, pNumWins, pMinSteps)
+					}
+				}
+			}
+		}
+
+		if didSwap == false {
+			if gameWon(&state) {
+				(*pNumWins)++
+				if len(state.swaps) < *pMinSteps {
+					*pMinSteps = len(state.swaps)
+					fmt.Printf("%d %d %d\n", time.Since(start).Milliseconds(), *pNumWins, len(state.swaps))
+					printMoveList(state.swaps)
+				}
 			}
 		}
 	}
@@ -188,4 +236,9 @@ func (s *State) printState() {
 		fmt.Printf("%s\t", stringBolt)
 	}
 	fmt.Println("")
+}
+func printMoveList(swaps []Swap) {
+	for moveIdx, swap := range swaps {
+		fmt.Printf("%d: %d -> %d\n", moveIdx+1, swap.boltStart, swap.boltEnd)
+	}
 }
