@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -9,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unsafe"
 )
 
 const NutsPerBolt = 4
@@ -29,7 +29,12 @@ type SwapAction struct {
 	destStart int
 }
 
-type NutOrdering [NumBolts][4]byte
+type Bolt struct {
+	nuts          [4]byte
+	startingIndex int
+}
+
+type NutOrdering [NumBolts]Bolt
 
 type MapValue struct {
 	previous  NutOrdering
@@ -47,9 +52,16 @@ func main() {
 	initialState := loadFile("test.nuts")
 	//initialState.printState()
 	solved = make(chan NutOrdering, 1)
-	pendingOrders = make(chan NutOrdering, 1000)
+	pendingOrders = make(chan NutOrdering, 5000)
 
-	ord := NutOrdering(initialState.nuts)
+	ord := NutOrdering{}
+	for i := 0; i < NumBolts; i++ {
+		ord[i] = Bolt{
+			nuts:          initialState.nuts[i],
+			startingIndex: i,
+		}
+	}
+
 	//NutOrdering(initialState.nuts)
 	ord = sortNutOrdering(ord)
 	stateMap[ord] = MapValue{
@@ -64,7 +76,7 @@ func main() {
 	solutionPrinter()
 	for {
 		time.Sleep(time.Second)
-		log.Printf("found: %d solutions", solutions)
+		//log.Printf("found: %d solutions", solutions)
 	}
 }
 
@@ -127,7 +139,7 @@ func loadFile(path string) State {
 func printState(order NutOrdering) {
 	for _, bolt := range order {
 		zero := [...]byte{0}
-		stringBolt := string(bytes.ReplaceAll(bolt[:], zero[:], []byte("_")))
+		stringBolt := string(bytes.ReplaceAll(bolt.nuts[:], zero[:], []byte("_")))
 		fmt.Printf("%s\t", stringBolt)
 	}
 	fmt.Printf("\n")
@@ -151,13 +163,13 @@ func doSwap(nutOrdering NutOrdering, swap SwapAction) NutOrdering {
 		srcNut := (swap.count - 1) - numSwapped
 		dstNut := swap.destStart - numSwapped
 		if dstNut < 0 {
-			if nutOrdering[swap.src][srcNut] != 0 {
+			if nutOrdering[swap.src].nuts[srcNut] != 0 {
 				log.Printf("ran out of dest spots")
 			}
 			break
 		}
-		nutOrdering[swap.dst][dstNut] = nutOrdering[swap.src][srcNut]
-		nutOrdering[swap.src][srcNut] = 0
+		nutOrdering[swap.dst].nuts[dstNut] = nutOrdering[swap.src].nuts[srcNut]
+		nutOrdering[swap.src].nuts[srcNut] = 0
 	}
 	return nutOrdering
 }
@@ -167,25 +179,23 @@ func doAllSwaps(nutOrdering NutOrdering) {
 	if isSolved(nutOrdering) {
 		solved <- nutOrdering
 		solutions++
-		//log.Printf("SOLVED") a
-		//newState.printState()
 		return
 	}
 	for srcIndex, srcBolt := range nutOrdering {
 
-		srcCount, numBlanks, willLeaveBlank, srcNutType := topNuts(srcBolt)
+		srcCount, numBlanks, willLeaveBlank, srcNutType := topNuts(srcBolt.nuts)
 		if srcCount == 4 && numBlanks == 0 {
 			continue
 		}
 
 		for destIndex, destBolt := range nutOrdering {
-			if srcIndex == destIndex || destBolt[0] != 0 {
+			if srcIndex == destIndex || destBolt.nuts[0] != 0 {
 				continue
 			}
 
 			lastBlank := 0
 			var destNutType byte = 0
-			for nutIndex, nut := range destBolt {
+			for nutIndex, nut := range destBolt.nuts {
 				if nut != 0 {
 					lastBlank = nutIndex - 1
 					destNutType = nut
@@ -234,13 +244,14 @@ func addNewOrder(nutOrdering NutOrdering, previous NutOrdering) {
 	}
 }
 
+func compareNuts(nut1 [4]byte, nut2 [4]byte) bool {
+	return binary.BigEndian.Uint32(nut1[:]) < binary.BigEndian.Uint32(nut2[:])
+}
+
 func sortNutOrdering(nutOrdering NutOrdering) NutOrdering {
-	nutsAsInts := (*[NumBolts]uint32)(unsafe.Pointer(&nutOrdering[0][0]))[:]
-
-	sort.Slice(nutsAsInts, func(i, j int) bool { return nutsAsInts[i] < nutsAsInts[j] })
-
-	sortedOrder := (*[NumBolts][4]byte)(unsafe.Pointer(&nutsAsInts[0]))[:]
-	return NutOrdering(sortedOrder)
+	asSlice := nutOrdering[:]
+	sort.Slice(asSlice, func(i, j int) bool { return compareNuts(asSlice[i].nuts, asSlice[j].nuts) })
+	return NutOrdering(asSlice)
 }
 
 func topNuts(srcBolt [4]byte) (int, int, bool, byte) {
@@ -270,7 +281,7 @@ func topNuts(srcBolt [4]byte) (int, int, bool, byte) {
 func isSolved(order NutOrdering) bool {
 	for _, bolt := range order {
 		for nut := 0; nut < 4; nut++ {
-			if bolt[0] != bolt[nut] {
+			if bolt.nuts[0] != bolt.nuts[nut] {
 				return false
 			}
 		}
