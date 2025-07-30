@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -35,24 +36,67 @@ type Bolt struct {
 }
 
 type NutOrdering [NumBolts]Bolt
-
+type MapKey [NumBolts][4]byte
 type MapValue struct {
 	previous  NutOrdering
 	swapCount int
 }
 
-// const map
-var stateMap = make(map[NutOrdering]MapValue, 10000)
-
 var pendingOrders chan NutOrdering
 var solved chan NutOrdering
 var solutions = 0
+
+type ConcMap struct {
+	mu sync.RWMutex // or sync.Mutex
+
+	stateMap map[MapKey]MapValue
+}
+
+var c ConcMap
+
+func initConcMap() ConcMap {
+	return ConcMap{stateMap: make(map[MapKey]MapValue, 10000)}
+}
+
+func orderToKey(order NutOrdering) MapKey {
+	var key MapKey = [NumBolts][4]byte{}
+	for i := 0; i < NumBolts; i++ {
+		key[i] = order[i].nuts
+	}
+	return key
+}
+
+func (c *ConcMap) read(order NutOrdering) MapValue {
+	key := orderToKey(order)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.stateMap[key]
+}
+
+func (c *ConcMap) update(order NutOrdering, value MapValue) bool {
+	key := orderToKey(order)
+	_, preexists := c.stateMap[key]
+	if !preexists {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.stateMap[key] = value
+		return true
+	} else {
+		if c.read(value.previous).swapCount < c.stateMap[key].swapCount {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			c.stateMap[key] = value
+		}
+		return false
+	}
+}
 
 func main() {
 	initialState := loadFile("test.nuts")
 	//initialState.printState()
 	solved = make(chan NutOrdering, 1)
-	pendingOrders = make(chan NutOrdering, 5000)
+	pendingOrders = make(chan NutOrdering, 50000)
 
 	ord := NutOrdering{}
 	for i := 0; i < NumBolts; i++ {
@@ -61,15 +105,13 @@ func main() {
 			startingIndex: i,
 		}
 	}
-
+	c = initConcMap()
 	//NutOrdering(initialState.nuts)
 	ord = sortNutOrdering(ord)
-	stateMap[ord] = MapValue{
+	c.update(ord, MapValue{
 		swapCount: 0,
-	}
-	//log.Printf(stateMap)
-	test := stateMap[ord].previous
-	log.Printf("%s", test[0])
+	})
+
 	pendingOrders <- ord
 
 	work()
@@ -81,10 +123,10 @@ func main() {
 }
 
 func printSolution(order NutOrdering) {
-	fmt.Printf("%d\t", stateMap[order].swapCount)
+	fmt.Printf("%d\t", c.stateMap[orderToKey(order)].swapCount)
 	printState(order)
-	if stateMap[order].previous != order {
-		printSolution(stateMap[order].previous)
+	if c.stateMap[orderToKey(order)].previous != order {
+		printSolution(c.stateMap[orderToKey(order)].previous)
 	}
 }
 func solutionPrinter() {
@@ -137,6 +179,7 @@ func loadFile(path string) State {
 }
 
 func printState(order NutOrdering) {
+	order = sortNutOrderingByIndex(order)
 	for _, bolt := range order {
 		zero := [...]byte{0}
 		stringBolt := string(bytes.ReplaceAll(bolt.nuts[:], zero[:], []byte("_")))
@@ -220,29 +263,36 @@ func doAllSwaps(nutOrdering NutOrdering) {
 			newNutOrdering := doSwap(nutOrdering, swap)
 
 			newNutOrdering = sortNutOrdering(newNutOrdering)
-			addNewOrder(newNutOrdering, nutOrdering)
+			val := MapValue{
+				previous:  nutOrdering,
+				swapCount: c.stateMap[orderToKey(nutOrdering)].swapCount + 1,
+			}
+			if c.update(newNutOrdering, val) {
+				pendingOrders <- newNutOrdering
+			}
+			//addNewOrder(newNutOrdering, nutOrdering)
 			//newState.solve(limiter)
 		}
 	}
 }
 
-func addNewOrder(nutOrdering NutOrdering, previous NutOrdering) {
-	_, preexists := stateMap[nutOrdering]
-	if !preexists {
-		stateMap[nutOrdering] = MapValue{
-			previous:  previous,
-			swapCount: stateMap[previous].swapCount + 1,
-		}
-		pendingOrders <- nutOrdering
-	} else {
-		if stateMap[previous].swapCount+1 < stateMap[nutOrdering].swapCount {
-			stateMap[nutOrdering] = MapValue{
-				previous:  previous,
-				swapCount: stateMap[previous].swapCount + 1,
-			}
-		}
-	}
-}
+//func addNewOrder(nutOrdering NutOrdering, previous NutOrdering) {
+//	_, preexists := stateMap[nutOrdering]
+//	if !preexists {
+//		stateMap[nutOrdering] = MapValue{
+//			previous:  previous,
+//			swapCount: stateMap[previous].swapCount + 1,
+//		}
+//		pendingOrders <- nutOrdering
+//	} else {
+//		if stateMap[previous].swapCount+1 < stateMap[nutOrdering].swapCount {
+//			stateMap[nutOrdering] = MapValue{
+//				previous:  previous,
+//				swapCount: stateMap[previous].swapCount + 1,
+//			}
+//		}
+//	}
+//}
 
 func compareNuts(nut1 [4]byte, nut2 [4]byte) bool {
 	return binary.BigEndian.Uint32(nut1[:]) < binary.BigEndian.Uint32(nut2[:])
@@ -251,6 +301,11 @@ func compareNuts(nut1 [4]byte, nut2 [4]byte) bool {
 func sortNutOrdering(nutOrdering NutOrdering) NutOrdering {
 	asSlice := nutOrdering[:]
 	sort.Slice(asSlice, func(i, j int) bool { return compareNuts(asSlice[i].nuts, asSlice[j].nuts) })
+	return NutOrdering(asSlice)
+}
+func sortNutOrderingByIndex(nutOrdering NutOrdering) NutOrdering {
+	asSlice := nutOrdering[:]
+	sort.Slice(asSlice, func(i, j int) bool { return asSlice[i].startingIndex < asSlice[j].startingIndex })
 	return NutOrdering(asSlice)
 }
 
