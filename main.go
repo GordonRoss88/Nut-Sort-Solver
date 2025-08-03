@@ -117,29 +117,27 @@ func getTopNuts(pBolt *Bolt) (int, byte, int) {
 	var topNut byte = EmptyNut
 
 	count := 0
-	var nut int
-	for nut = 0; nut < NutsPerBolt; nut++ {
-		if pBolt.nuts[nut] == EmptyNut {
+	for nutIdx, nut := range pBolt.nuts {
+		if nut == EmptyNut {
 			continue
 		} else if topNut == EmptyNut {
-			topNut = pBolt.nuts[nut]
+			topNut = nut
 			count++
-		} else if pBolt.nuts[nut] == topNut {
+		} else if nut == topNut {
 			count++
 		} else {
-			break
+			return count, topNut, nutIdx - count
 		}
 	}
-	return count, topNut, nut - count
+	return count, topNut, NutsPerBolt - count
 }
 func getTopEmpty(pBolt *Bolt) int {
-	var nut int
-	for nut = 0; nut < NutsPerBolt; nut++ {
-		if pBolt.nuts[nut] != EmptyNut {
-			break
+	for nutIdx, nut := range pBolt.nuts {
+		if nut != EmptyNut {
+			return nutIdx
 		}
 	}
-	return nut
+	return NutsPerBolt
 }
 
 func doMove(pState *State, pDetailedMove *DetailedMove) {
