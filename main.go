@@ -18,8 +18,12 @@ type Move struct {
 	boltStart int
 	boltEnd   int
 }
+type Bolt struct {
+	nuts    [NutsPerBolt]byte
+	boltIdx int
+}
 type State struct {
-	nuts  [][NutsPerBolt]byte
+	bolts []Bolt
 	moves []Move
 }
 
@@ -36,17 +40,17 @@ func main() {
 func play(state State, start time.Time, pNumWins *int, pMinMoves *int) {
 	if len(state.moves) < *pMinMoves {
 		didMove := false
-		for boltStart := 0; boltStart < len(state.nuts); boltStart++ {
-			for boltEnd := 0; boltEnd < len(state.nuts); boltEnd++ {
+		for boltStart := 0; boltStart < len(state.bolts); boltStart++ {
+			for boltEnd := 0; boltEnd < len(state.bolts); boltEnd++ {
 				if boltStart != boltEnd {
 					moveCount := getMoveCount(&state, boltStart, boltEnd)
 					if moveCount > 0 {
 						didMove = true
 						newState := State{
-							nuts:  make([][NutsPerBolt]byte, len(state.nuts)),
+							bolts: make([]Bolt, len(state.bolts)),
 							moves: make([]Move, len(state.moves)),
 						}
-						copy(newState.nuts, state.nuts)
+						copy(newState.bolts, state.bolts)
 						copy(newState.moves, state.moves)
 						newState.moves = append(newState.moves, createMove(boltStart, boltEnd))
 
@@ -79,7 +83,7 @@ func getMoveCount(pState *State, boltStart int, boltEnd int) int {
 	countEnd := getTopEmpty(pState, boltEnd)
 	if countStart > 0 && countEnd > 0 &&
 		countEnd >= countStart && countStart != NutsPerBolt &&
-		(countEnd == NutsPerBolt || topNutColor == pState.nuts[boltEnd][countEnd]) {
+		(countEnd == NutsPerBolt || topNutColor == pState.bolts[boltEnd].nuts[countEnd]) {
 		if position+countStart == NutsPerBolt && countEnd == NutsPerBolt {
 			return 0
 		}
@@ -93,12 +97,12 @@ func getTopNuts(pState *State, bolt int) (int, byte, int) {
 	count := 0
 	var nut int
 	for nut = 0; nut < NutsPerBolt; nut++ {
-		if pState.nuts[bolt][nut] == EmptyNut {
+		if pState.bolts[bolt].nuts[nut] == EmptyNut {
 			continue
 		} else if topNut == EmptyNut {
-			topNut = pState.nuts[bolt][nut]
+			topNut = pState.bolts[bolt].nuts[nut]
 			count++
-		} else if pState.nuts[bolt][nut] == topNut {
+		} else if pState.bolts[bolt].nuts[nut] == topNut {
 			count++
 		} else {
 			break
@@ -109,7 +113,7 @@ func getTopNuts(pState *State, bolt int) (int, byte, int) {
 func getTopEmpty(pState *State, bolt int) int {
 	var nut int
 	for nut = 0; nut < NutsPerBolt; nut++ {
-		if pState.nuts[bolt][nut] != EmptyNut {
+		if pState.bolts[bolt].nuts[nut] != EmptyNut {
 			break
 		}
 	}
@@ -119,19 +123,19 @@ func getTopEmpty(pState *State, bolt int) int {
 func move(pState *State, boltStart int, boltEnd int, count int) {
 	var color byte
 	for nut := 0; nut < NutsPerBolt; nut++ {
-		if pState.nuts[boltStart][nut] != EmptyNut {
-			color = pState.nuts[boltStart][nut]
+		if pState.bolts[boltStart].nuts[nut] != EmptyNut {
+			color = pState.bolts[boltStart].nuts[nut]
 			for i := 0; i < count; i++ {
-				pState.nuts[boltStart][nut+i] = EmptyNut
+				pState.bolts[boltStart].nuts[nut+i] = EmptyNut
 			}
 			break
 		}
 	}
 
 	for nut := NutsPerBolt - 1; nut >= 0; nut-- {
-		if pState.nuts[boltEnd][nut] == EmptyNut {
+		if pState.bolts[boltEnd].nuts[nut] == EmptyNut {
 			for i := 0; i < count; i++ {
-				pState.nuts[boltEnd][nut-i] = color
+				pState.bolts[boltEnd].nuts[nut-i] = color
 			}
 			break
 		}
@@ -141,9 +145,9 @@ func move(pState *State, boltStart int, boltEnd int, count int) {
 
 func gameWon(pState *State) bool {
 	win := true
-	for bolt := 0; bolt < len(pState.nuts); bolt++ {
+	for bolt := 0; bolt < len(pState.bolts); bolt++ {
 		for nut := 0; nut < NutsPerBolt-1; nut++ {
-			if pState.nuts[bolt][nut] != pState.nuts[bolt][NutsPerBolt-1] {
+			if pState.bolts[bolt].nuts[nut] != pState.bolts[bolt].nuts[NutsPerBolt-1] {
 				win = false
 			}
 		}
@@ -171,12 +175,13 @@ func loadFile(path string) State {
 	if len(inputLine)%NutsPerBolt != 0 {
 		log.Printf("State length not divisible by nuts per bolt!\n%s", string(inputLine))
 	}
-	state2d := make([][NutsPerBolt]byte, len(inputLine)/NutsPerBolt)
-	for bolt, nut := 0, 0; bolt < len(state2d); bolt, nut = bolt+1, nut+NutsPerBolt {
-		state2d[bolt] = [NutsPerBolt]byte(inputLine[nut : nut+NutsPerBolt])
+	boltList := make([]Bolt, len(inputLine)/NutsPerBolt)
+	for boltIdx := range boltList {
+		boltList[boltIdx].boltIdx = boltIdx
+		boltList[boltIdx].nuts = [NutsPerBolt]byte(inputLine[boltIdx*NutsPerBolt : boltIdx*NutsPerBolt+NutsPerBolt])
 	}
 	state := State{
-		nuts:  state2d,
+		bolts: boltList,
 		moves: make([]Move, 0),
 	}
 	return state
@@ -184,9 +189,9 @@ func loadFile(path string) State {
 
 func (s *State) printState() {
 	fmt.Printf("%d ", len(s.moves))
-	for _, bolt := range s.nuts {
+	for _, bolt := range s.bolts {
 		zero := [...]byte{0}
-		stringBolt := string(bytes.ReplaceAll(bolt[:], zero[:], []byte("_")))
+		stringBolt := string(bytes.ReplaceAll(bolt.nuts[:], zero[:], []byte("_")))
 		fmt.Printf("%s\t", stringBolt)
 	}
 	fmt.Println("")
