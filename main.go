@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -36,50 +37,89 @@ type State struct {
 	moves []UserMove
 }
 
+var stateChannel chan State
+var startTime time.Time
+var stateMap map[string][]UserMove
+
 func main() {
 	initialState := loadFile("test.nuts")
 	initialState.printState()
-	start := time.Now()
-	fmt.Printf("%d\n", time.Since(start).Milliseconds())
-	numWins := 0
-	minMoves := 50
-	play(initialState, start, &numWins, &minMoves)
-	fmt.Printf("done %d %d %d\n", numWins, minMoves, time.Since(start).Milliseconds())
-}
-func play(state State, start time.Time, pNumWins *int, pMinMoves *int) {
-	if len(state.moves) < *pMinMoves {
-		didMove := false
-		for _, boltEnd := range state.bolts {
-			if boltEnd.nuts[0] == EmptyNut {
-				for _, boltStart := range state.bolts {
-					if boltStart.idx != boltEnd.idx && boltStart.nuts[NutsPerBolt-1] != EmptyNut {
-						pDetailedMove := getMove(&boltStart, &boltEnd)
-						if pDetailedMove != nil {
-							didMove = true
-							newState := State{
-								bolts: make([]Bolt, len(state.bolts)),
-								moves: make([]UserMove, len(state.moves)),
-							}
-							copy(newState.bolts, state.bolts)
-							copy(newState.moves, state.moves)
-							newState.moves = append(newState.moves, createMove(boltStart.idx, boltEnd.idx))
+	startTime = time.Now()
+	stateChannel = make(chan State, 5000)
+	stateMap = make(map[string][]UserMove, 10000)
+	addToMap(initialState, initialState)
+	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
 
-							doMove(&newState, pDetailedMove)
-							play(newState, start, pNumWins, pMinMoves)
+	var state State
+	var win bool
+	for {
+		state = <-stateChannel
+		win = play(state)
+		if win || len(stateChannel) == 0 {
+			break
+		}
+	}
+
+	fmt.Printf("%s in %dms\n", winString(win), time.Since(startTime).Milliseconds())
+	printMoveList(state.moves)
+}
+func winString(win bool) string {
+	if win {
+		return "won"
+	} else {
+		return "lost"
+	}
+}
+func play(state State) bool {
+	if gameWon(&state) {
+		return true
+	}
+
+	for boltEndIdx, boltEnd := range state.bolts {
+		if boltEnd.nuts[0] == EmptyNut {
+			for boltStartIdx, boltStart := range state.bolts {
+				if boltStart.idx != boltEnd.idx && boltStart.nuts[NutsPerBolt-1] != EmptyNut {
+					pDetailedMove := getMove(&boltStart, &boltEnd)
+					if pDetailedMove != nil {
+						pDetailedMove.boltStart = boltStartIdx
+						pDetailedMove.boltEnd = boltEndIdx
+						newState := State{
+							bolts: make([]Bolt, len(state.bolts)),
+							moves: make([]UserMove, len(state.moves)),
 						}
+						copy(newState.bolts, state.bolts)
+						copy(newState.moves, state.moves)
+						newState.moves = append(newState.moves, createMove(boltStart.idx, boltEnd.idx))
+
+						doMove(&newState, pDetailedMove)
+						sortBolts(newState.bolts)
+						addToMap(newState, state)
 					}
 				}
 			}
 		}
+	}
+	return false
+}
 
-		if !didMove {
-			if gameWon(&state) {
-				(*pNumWins)++
-				if len(state.moves) < *pMinMoves {
-					*pMinMoves = len(state.moves)
-					fmt.Printf("%d %d %d\n", time.Since(start).Milliseconds(), *pNumWins, len(state.moves))
-				}
-			}
+func boltsToKey(pBolts []Bolt) string {
+	var sb strings.Builder
+	zero := [...]byte{0}
+	for _, bolt := range pBolts {
+		sb.WriteString(string(bytes.ReplaceAll(bolt.nuts[:], zero[:], []byte("_"))))
+	}
+	return sb.String()
+}
+
+func addToMap(state State, previous State) {
+	key := boltsToKey(state.bolts)
+	_, preexists := stateMap[key]
+	if !preexists {
+		stateMap[key] = state.moves
+		stateChannel <- state
+	} else {
+		if len(stateMap[boltsToKey(previous.bolts)])+1 < len(stateMap[key]) {
+			stateMap[key] = state.moves
 		}
 	}
 }
@@ -103,8 +143,6 @@ func getMove(pBoltStart *Bolt, pBoltEnd *Bolt) *DetailedMove {
 	if blankCount >= nutCount &&
 		(blankCount == NutsPerBolt || nutColor == pBoltEnd.nuts[blankCount]) {
 		return &DetailedMove{
-			boltStart:     pBoltStart.idx,
-			boltEnd:       pBoltEnd.idx,
 			color:         nutColor,
 			count:         nutCount,
 			positionStart: nutPosition,
@@ -146,6 +184,17 @@ func doMove(pState *State, pDetailedMove *DetailedMove) {
 		pState.bolts[pDetailedMove.boltEnd].nuts[pDetailedMove.positionEnd-i] = pDetailedMove.color
 	}
 	//pState.printState()
+}
+
+func sortBolts(pBolts []Bolt) {
+	sort.Slice(pBolts, func(i, j int) bool {
+		for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
+			if pBolts[i].nuts[nutIdx] != pBolts[j].nuts[nutIdx] {
+				return pBolts[i].nuts[nutIdx] < pBolts[j].nuts[nutIdx]
+			}
+		}
+		return false
+	})
 }
 
 func gameWon(pState *State) bool {
@@ -203,6 +252,6 @@ func (s *State) printState() {
 }
 func printMoveList(moves []UserMove) {
 	for moveIdx, move := range moves {
-		fmt.Printf("%d: %d -> %d\n", moveIdx+1, move.boltStart, move.boltEnd)
+		fmt.Printf("%d: %d -> %d\n", moveIdx+1, move.boltStart+1, move.boltEnd+1)
 	}
 }
