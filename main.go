@@ -47,7 +47,7 @@ func main() {
 	initialState.printState()
 	startTime = time.Now()
 	stateChannel = make(chan State, 5000)
-	stateToMovesMap = make(map[string][]UserMove, 10000)
+	stateToMovesMap = make(StateToMovesMap, 10000)
 	stateToMovesMap.addToMap(&initialState, &initialState)
 	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
 
