@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+const NumBolts = 14
 const NutsPerBolt = 4
 const EmptyStartingBolts = 2
 const EmptyNut = 0
@@ -28,13 +29,13 @@ type UserMove struct {
 	boltStart int
 	boltEnd   int
 }
-type StateToMovesMap map[string][]UserMove
+type StateToMovesMap map[[14][4]byte][]UserMove
 type Bolt struct {
 	nuts [NutsPerBolt]byte
 	idx  int
 }
 type State struct {
-	bolts []Bolt
+	bolts [NumBolts]Bolt
 	moves []UserMove
 }
 
@@ -62,7 +63,7 @@ func main() {
 	}
 
 	fmt.Printf("won: %t in %dms\n", win, time.Since(startTime).Milliseconds())
-	state.printMoveList()
+	//state.printMoveList()
 }
 
 func (pState *State) play() bool {
@@ -93,26 +94,16 @@ func (pState *State) play() bool {
 	return false
 }
 
-func (pMap StateToMovesMap) addToMap(pNewState *State, pOldState *State) {
-	key := pNewState.makeMapKey()
-	_, preexists := pMap[key]
-	if !preexists {
-		pMap[key] = pNewState.moves
-		stateChannel <- *pNewState
-	} else {
-		if len(pMap[pOldState.makeMapKey()])+1 < len(pMap[key]) {
-			pMap[key] = pNewState.moves
+func (pState *State) gameWon() bool {
+	win := true
+	for _, bolt := range pState.bolts {
+		for nut := 0; nut < NutsPerBolt-1; nut++ {
+			if bolt.nuts[nut] != bolt.nuts[NutsPerBolt-1] {
+				win = false
+			}
 		}
 	}
-}
-
-func (pState *State) makeMapKey() string {
-	var sb strings.Builder
-	zero := [...]byte{0}
-	for _, bolt := range pState.bolts {
-		sb.WriteString(string(bytes.ReplaceAll(bolt.nuts[:], zero[:], []byte("_"))))
-	}
-	return sb.String()
+	return win
 }
 
 func createMove(boltStart int, boltEnd int) UserMove {
@@ -175,10 +166,9 @@ func (pBolt *Bolt) getTopEmpty() int {
 
 func (pState *State) deepCloneState() State {
 	newState := State{
-		bolts: make([]Bolt, len(pState.bolts)),
+		bolts: pState.bolts,
 		moves: make([]UserMove, len(pState.moves)),
 	}
-	copy(newState.bolts, pState.bolts)
 	copy(newState.moves, pState.moves)
 	return newState
 }
@@ -192,26 +182,48 @@ func (pState *State) doMove(pDetailedMove *DetailedMove) {
 }
 
 func (pState *State) sortBolts() {
-	sort.Slice(pState.bolts, func(i, j int) bool {
-		for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
-			if pState.bolts[i].nuts[nutIdx] != pState.bolts[j].nuts[nutIdx] {
-				return pState.bolts[i].nuts[nutIdx] < pState.bolts[j].nuts[nutIdx]
-			}
-		}
-		return false
+	boltsAsSlice := pState.bolts[:]
+	sort.Slice(boltsAsSlice, func(i, j int) bool {
+		return compareNuts(boltsAsSlice[i].nuts, boltsAsSlice[j].nuts)
 	})
 }
-
-func (pState *State) gameWon() bool {
-	win := true
-	for _, bolt := range pState.bolts {
-		for nut := 0; nut < NutsPerBolt-1; nut++ {
-			if bolt.nuts[nut] != bolt.nuts[NutsPerBolt-1] {
-				win = false
-			}
+func compareNuts(bolt1 [NutsPerBolt]byte, bolt2 [NutsPerBolt]byte) bool {
+	for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
+		if bolt1[nutIdx] != bolt2[nutIdx] {
+			return bolt1[nutIdx] < bolt2[nutIdx]
 		}
 	}
-	return win
+	return false
+}
+
+func (pMap StateToMovesMap) addToMap(pNewState *State, pOldState *State) {
+	key := pNewState.makeMapKey()
+	_, preexists := pMap[key]
+	if !preexists {
+		pMap[key] = pNewState.moves
+		stateChannel <- *pNewState
+	} else {
+		if len(pMap[pOldState.makeMapKey()])+1 < len(pMap[key]) {
+			pMap[key] = pNewState.moves
+		}
+	}
+}
+
+func (pState *State) makeMapKeyOld() string {
+	var sb strings.Builder
+	zero := [...]byte{0}
+	for _, bolt := range pState.bolts {
+		sb.WriteString(string(bytes.ReplaceAll(bolt.nuts[:], zero[:], []byte("_"))))
+	}
+	return sb.String()
+}
+
+func (pState *State) makeMapKey() [NumBolts][NutsPerBolt]byte {
+	key := [NumBolts][NutsPerBolt]byte{}
+	for boltIdx, bolt := range pState.bolts {
+		key[boltIdx] = bolt.nuts
+	}
+	return key
 }
 
 func loadFile(path string) State {
@@ -234,7 +246,10 @@ func loadFile(path string) State {
 	if len(inputLine)%NutsPerBolt != 0 {
 		log.Printf("State length not divisible by nuts per bolt!\n%s", string(inputLine))
 	}
-	boltList := make([]Bolt, len(inputLine)/NutsPerBolt)
+	if len(inputLine)%NumBolts != 0 {
+		log.Printf("State length not divisible by num bolts!\n%s", string(inputLine))
+	}
+	var boltList [NumBolts]Bolt
 	for boltIdx := range boltList {
 		boltList[boltIdx].idx = boltIdx
 		boltList[boltIdx].nuts = [NutsPerBolt]byte(inputLine[boltIdx*NutsPerBolt : boltIdx*NutsPerBolt+NutsPerBolt])
