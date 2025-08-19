@@ -56,36 +56,151 @@ var startTime time.Time
 var stateToMovesMap StateToMovesMap
 
 func main() {
-	for {
+	boltCount := GetBoltCount()
+	fmt.Println(boltCount)
+
+	initialState := LoadGameState(boltCount)
+	initialState.printState()
+
+	/*for {
 		robotgo.MilliSleep(200)
 		x, y := robotgo.Location()
 		color := robotgo.GetPixelColor(x, y)
 		fmt.Println("x,y = color ", x, y, color)
+	}*/
+
+	//initialState := loadFile("test.nuts")
+	initialState.printState()
+	startTime = time.Now()
+	stateChannel = make(chan State, 5000)
+	stateToMovesMap = make(StateToMovesMap, 10000)
+	stateToMovesMap.addToMap(&initialState, &initialState)
+	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
+
+	var state State
+	var win bool
+
+	for {
+		state = <-stateChannel
+		win = state.play()
+		if win || len(stateChannel) == 0 {
+			break
+		}
 	}
 
-	/*
-	   initialState := loadFile("test.nuts")
-	   initialState.printState()
-	   startTime = time.Now()
-	   stateChannel = make(chan State, 5000)
-	   stateToMovesMap = make(StateToMovesMap, 10000)
-	   stateToMovesMap.addToMap(&initialState, &initialState)
-	   fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
+	fmt.Printf("won: %t in %dms\n", win, time.Since(startTime).Milliseconds())
+	//state.printMoveList()
+	state.winGame()
 
-	   var state State
-	   var win bool
+}
 
-	   	for {
-	   		state = <-stateChannel
-	   		win = state.play()
-	   		if win || len(stateChannel) == 0 {
-	   			break
-	   		}
-	   	}
+func (pState *State) winGame() {
+	robotgo.MouseSleep = 25
 
-	   fmt.Printf("won: %t in %dms\n", win, time.Since(startTime).Milliseconds())
-	   state.printMoveList()
-	*/
+	for moveIdx, move := range pState.moves {
+		fmt.Printf("%d: %d -> %d\n", moveIdx+1, move.boltStart+1, move.boltEnd+1)
+		robotgo.Move(BoltLocations[move.boltStart][0], BoltLocations[move.boltStart][1])
+		robotgo.Click("left", true)
+		robotgo.Move(BoltLocations[move.boltEnd][0], BoltLocations[move.boltEnd][1])
+		robotgo.Click("left", true)
+	}
+}
+
+func GetBoltCount() int {
+	if BoltCountIs14() {
+		return 14
+	} else {
+		return -1
+	}
+}
+
+const BoltColor = "ffffff"
+const Purple = "863f95"
+const Red = "ad010b"
+const Sky = "008fc6"
+const Pink = "fa4a43"
+const Green = "028b0b"
+const Yellow = "f59e00"
+const Metal = "3d3d3d"
+const Brown = "804731"
+const Gray = "759bad"
+const Orange = "c06c05"
+const Blue = "373cc0"
+const Fushia = "c30066"
+
+var colorList = [13]string{"000000", Purple, Red, Sky, Pink, Green, Yellow, Metal, Brown, Gray, Orange, Blue, Fushia}
+var BoltLocationsX [7]int
+var BoltLocationsY [2]int
+var BoltLocations [14][2]int
+
+func BoltCountIs14() bool {
+	const BoltStartX = 413
+	const BoltOffsetX = 185
+	const BoltStartY = 298
+	const BoltOffsetY = 300
+
+	var xLocations [7]int
+	for i := 0; i < len(xLocations); i++ {
+		xLocations[i] = BoltStartX + i*BoltOffsetX
+	}
+	var yLocations [2]int
+	for i := 0; i < len(yLocations); i++ {
+		yLocations[i] = BoltStartY + i*BoltOffsetY
+	}
+
+	for _, y := range yLocations {
+		for _, x := range xLocations {
+			fmt.Println(x, y, robotgo.GetPixelColor(x, y))
+			if robotgo.GetPixelColor(x, y) != BoltColor {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func LoadGameState(numBolts int) State {
+	const NutStartX = 348
+	const NutStartY = 329
+	const NutOffsetY = 52
+	const BoltOffsetX = 185
+	const BoltOffsetY = 300
+
+	var boltList [NumBolts]Bolt
+
+	var x int
+	var y int
+	if numBolts == 14 {
+		for boltIdx := 0; boltIdx < numBolts; boltIdx++ {
+			boltList[boltIdx].idx = boltIdx
+
+			if boltIdx < 7 {
+				x = NutStartX + boltIdx*BoltOffsetX
+				y = NutStartY
+			} else {
+				x = NutStartX + (boltIdx-7)*BoltOffsetX
+				y = NutStartY + BoltOffsetY
+			}
+			BoltLocations[boltIdx][0] = x
+			BoltLocations[boltIdx][1] = y
+
+			for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
+				for colorIdx, colorValue := range colorList {
+					if robotgo.GetPixelColor(x, y) == colorValue {
+						boltList[boltIdx].nuts[nutIdx] = byte(colorIdx) + 0x30
+						break
+					}
+				}
+				y += NutOffsetY
+			}
+		}
+	}
+
+	state := State{
+		bolts: boltList,
+		moves: make([]UserMove, 0),
+	}
+	return state
 }
 
 func (pState *State) play() bool {
