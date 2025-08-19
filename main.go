@@ -1,5 +1,15 @@
 package main
 
+/*
+robotgo Windows setup:
+winget install MartinStorsjo.LLVM-MinGW.UCRT
+Add to PATH variable: %USERPROFILE%\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\llvm-mingw-20250709-ucrt-x86_64\bin
+Close and reopen vsCode
+Import "github.com/go-vgo/robotgo"
+
+notes, multi-monitor support with robotgo.GetPixelColor() seems to be broken on the 2nd monitor.
+*/
+
 import (
 	"bytes"
 	"fmt"
@@ -9,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/go-vgo/robotgo"
 )
 
 const NumBolts = 14
@@ -44,26 +56,36 @@ var startTime time.Time
 var stateToMovesMap StateToMovesMap
 
 func main() {
-	initialState := loadFile("test.nuts")
-	initialState.printState()
-	startTime = time.Now()
-	stateChannel = make(chan State, 5000)
-	stateToMovesMap = make(StateToMovesMap, 10000)
-	stateToMovesMap.addToMap(&initialState, &initialState)
-	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
-
-	var state State
-	var win bool
 	for {
-		state = <-stateChannel
-		win = state.play()
-		if win || len(stateChannel) == 0 {
-			break
-		}
+		robotgo.MilliSleep(200)
+		x, y := robotgo.Location()
+		color := robotgo.GetPixelColor(x, y)
+		fmt.Println("x,y = color ", x, y, color)
 	}
 
-	fmt.Printf("won: %t in %dms\n", win, time.Since(startTime).Milliseconds())
-	//state.printMoveList()
+	/*
+	   initialState := loadFile("test.nuts")
+	   initialState.printState()
+	   startTime = time.Now()
+	   stateChannel = make(chan State, 5000)
+	   stateToMovesMap = make(StateToMovesMap, 10000)
+	   stateToMovesMap.addToMap(&initialState, &initialState)
+	   fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
+
+	   var state State
+	   var win bool
+
+	   	for {
+	   		state = <-stateChannel
+	   		win = state.play()
+	   		if win || len(stateChannel) == 0 {
+	   			break
+	   		}
+	   	}
+
+	   fmt.Printf("won: %t in %dms\n", win, time.Since(startTime).Milliseconds())
+	   state.printMoveList()
+	*/
 }
 
 func (pState *State) play() bool {
