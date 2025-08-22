@@ -56,22 +56,24 @@ var startTime time.Time
 var stateToMovesMap StateToMovesMap
 
 func main() {
-	boltCount := GetBoltCount()
-	fmt.Println(boltCount)
-
-	initialState := LoadGameState(boltCount)
-	initialState.printState()
-
 	/*for {
 		robotgo.MilliSleep(200)
 		x, y := robotgo.Location()
 		color := robotgo.GetPixelColor(x, y)
 		fmt.Println("x,y = color ", x, y, color)
 	}*/
+	startTime = time.Now()
 
+	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
+	boltCount := GetBoltCount()
+	fmt.Println(boltCount)
+	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
+
+	initialState := LoadGameState(boltCount)
 	//initialState := loadFile("test.nuts")
 	initialState.printState()
-	startTime = time.Now()
+	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
+
 	stateChannel = make(chan State, 5000)
 	stateToMovesMap = make(StateToMovesMap, 10000)
 	stateToMovesMap.addToMap(&initialState, &initialState)
@@ -185,8 +187,9 @@ func LoadGameState(numBolts int) State {
 			BoltLocations[boltIdx][1] = y
 
 			for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
+				pixelColor := robotgo.GetPixelColor(x, y)
 				for colorIdx, colorValue := range colorList {
-					if robotgo.GetPixelColor(x, y) == colorValue {
+					if pixelColor == colorValue {
 						boltList[boltIdx].nuts[nutIdx] = byte(colorIdx) + 0x30
 						break
 					}
