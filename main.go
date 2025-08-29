@@ -65,32 +65,30 @@ func main() {
 	startTime = time.Now()
 
 	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
-	boltCount := GetBoltCount()
-	fmt.Println(boltCount)
-	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
+	numBolts := GetNumBolts()
+	fmt.Printf("%d bolt count: %d\n", time.Since(startTime).Milliseconds(), numBolts)
 
-	initialState := LoadGameState(boltCount)
+	initialState := LoadGameState(numBolts)
 	//initialState := loadFile("test.nuts")
-	initialState.printState()
-	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
+	fmt.Printf("%d Game state: ", time.Since(startTime).Milliseconds())
+	initialState.printState(numBolts)
 
 	stateChannel = make(chan State, 5000)
 	stateToMovesMap = make(StateToMovesMap, 10000)
 	stateToMovesMap.addToMap(&initialState, &initialState)
-	fmt.Printf("%d\n", time.Since(startTime).Milliseconds())
 
 	var state State
 	var win bool
 
 	for {
 		state = <-stateChannel
-		win = state.play()
+		win = state.play(numBolts)
 		if win || len(stateChannel) == 0 {
 			break
 		}
 	}
 
-	fmt.Printf("won: %t in %dms\n", win, time.Since(startTime).Milliseconds())
+	fmt.Printf("won: %t in %dms in %d moves\n", win, time.Since(startTime).Milliseconds(), len(state.moves))
 	//state.printMoveList()
 	state.winGame()
 
@@ -108,31 +106,31 @@ func (pState *State) winGame() {
 	}
 }
 
-func GetBoltCount() int {
+func GetNumBolts() int {
 	if BoltCountIs14() {
 		return 14
+	} else if BoltCountIs11() {
+		return 11
 	} else {
 		return -1
 	}
 }
 
 const BoltColor = "ffffff"
-const Purple = "863f95"
 const Red = "ad010b"
-const Sky = "008fc6"
-const Pink = "fa4a43"
-const Green = "028b0b"
-const Yellow = "f59e00"
-const Metal = "3d3d3d"
-const Brown = "804731"
-const Gray = "759bad"
 const Orange = "c06c05"
+const Yellow = "f59e00"
+const Green = "028b0b"
+const Sky = "008fc6"
 const Blue = "373cc0"
 const Fushia = "c30066"
+const Purple = "863f95"
+const Gray = "759bad"
+const Pink = "fa4a43"
+const Brown = "804731"
+const Metal = "3d3d3d"
 
-var colorList = [13]string{"000000", Purple, Red, Sky, Pink, Green, Yellow, Metal, Brown, Gray, Orange, Blue, Fushia}
-var BoltLocationsX [7]int
-var BoltLocationsY [2]int
+var colorList = [13]string{"000000", Red, Orange, Yellow, Green, Sky, Blue, Fushia, Purple, Gray, Pink, Brown, Metal}
 var BoltLocations [14][2]int
 
 func BoltCountIs14() bool {
@@ -141,38 +139,70 @@ func BoltCountIs14() bool {
 	const BoltStartY = 298
 	const BoltOffsetY = 300
 
-	var xLocations [7]int
-	for i := 0; i < len(xLocations); i++ {
-		xLocations[i] = BoltStartX + i*BoltOffsetX
-	}
-	var yLocations [2]int
-	for i := 0; i < len(yLocations); i++ {
-		yLocations[i] = BoltStartY + i*BoltOffsetY
+	var x int
+	var y int
+	for boltIdx := 0; boltIdx < 14; boltIdx++ {
+		if boltIdx < 7 {
+			x = BoltStartX + boltIdx*BoltOffsetX
+			y = BoltStartY
+		} else {
+			x = BoltStartX + (boltIdx-7)*BoltOffsetX
+			y = BoltStartY + BoltOffsetY
+		}
+		BoltLocations[boltIdx][0] = x
+		BoltLocations[boltIdx][1] = y
 	}
 
-	for _, y := range yLocations {
-		for _, x := range xLocations {
-			fmt.Println(x, y, robotgo.GetPixelColor(x, y))
-			if robotgo.GetPixelColor(x, y) != BoltColor {
-				return false
-			}
+	for boltIdx := 0; boltIdx < 14; boltIdx++ {
+		//fmt.Println(x, y, robotgo.GetPixelColor(x, y))
+		if robotgo.GetPixelColor(BoltLocations[boltIdx][0], BoltLocations[boltIdx][1]) != BoltColor {
+			return false
+		}
+	}
+	return true
+}
+func BoltCountIs11() bool {
+	const BoltStartX = 371
+	const BoltOffsetX = 241
+	const BoltStartY = 229
+	const BoltOffsetY = 389
+	const BoltRowOffsetX = 120
+
+	var x int
+	var y int
+	for boltIdx := 0; boltIdx < 14; boltIdx++ {
+		if boltIdx < 6 {
+			x = BoltStartX + boltIdx*BoltOffsetX
+			y = BoltStartY
+		} else {
+			x = BoltStartX + BoltRowOffsetX + (boltIdx-6)*BoltOffsetX
+			y = BoltStartY + BoltOffsetY
+		}
+		BoltLocations[boltIdx][0] = x
+		BoltLocations[boltIdx][1] = y
+	}
+
+	for boltIdx := 0; boltIdx < 11; boltIdx++ {
+		//fmt.Println(x, y, robotgo.GetPixelColor(x, y))
+		if robotgo.GetPixelColor(BoltLocations[boltIdx][0], BoltLocations[boltIdx][1]) != BoltColor {
+			return false
 		}
 	}
 	return true
 }
 
 func LoadGameState(numBolts int) State {
-	const NutStartX = 348
-	const NutStartY = 329
-	const NutOffsetY = 52
-	const BoltOffsetX = 185
-	const BoltOffsetY = 300
 
 	var boltList [NumBolts]Bolt
 
 	var x int
 	var y int
 	if numBolts == 14 {
+		NutStartX := 348
+		NutStartY := 329
+		NutOffsetY := 52
+		BoltOffsetX := 185
+		BoltOffsetY := 300
 		for boltIdx := 0; boltIdx < numBolts; boltIdx++ {
 			boltList[boltIdx].idx = boltIdx
 
@@ -197,6 +227,22 @@ func LoadGameState(numBolts int) State {
 				y += NutOffsetY
 			}
 		}
+	} else if numBolts == 11 {
+		nutOffsetX := -90
+		nutOffsetY := 42
+		nutOffsetVert := 68
+		for boltIdx := 0; boltIdx < numBolts; boltIdx++ {
+			boltList[boltIdx].idx = boltIdx
+			for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
+				pixelColor := robotgo.GetPixelColor(BoltLocations[boltIdx][0]+nutOffsetX, BoltLocations[boltIdx][1]+nutOffsetY+nutIdx*nutOffsetVert)
+				for colorIdx, colorValue := range colorList {
+					if pixelColor == colorValue {
+						boltList[boltIdx].nuts[nutIdx] = byte(colorIdx) + 0x30
+						break
+					}
+				}
+			}
+		}
 	}
 
 	state := State{
@@ -206,14 +252,16 @@ func LoadGameState(numBolts int) State {
 	return state
 }
 
-func (pState *State) play() bool {
-	if pState.gameWon() {
+func (pState *State) play(numBolts int) bool {
+	if pState.gameWon(numBolts) {
 		return true
 	}
 
-	for boltEndIdx, boltEnd := range pState.bolts {
+	for boltEndIdx := 0; boltEndIdx < numBolts; boltEndIdx++ {
+		boltEnd := pState.bolts[boltEndIdx]
 		if boltEnd.nuts[0] == EmptyNut {
-			for boltStartIdx, boltStart := range pState.bolts {
+			for boltStartIdx := 0; boltStartIdx < numBolts; boltStartIdx++ {
+				boltStart := pState.bolts[boltStartIdx]
 				if boltEndIdx != boltStartIdx && boltStart.nuts[NutsPerBolt-1] != EmptyNut {
 					pDetailedMove := getMove(&boltStart, &boltEnd)
 					if pDetailedMove != nil {
@@ -234,9 +282,10 @@ func (pState *State) play() bool {
 	return false
 }
 
-func (pState *State) gameWon() bool {
+func (pState *State) gameWon(numBolts int) bool {
 	win := true
-	for _, bolt := range pState.bolts {
+	for boltIdx := 0; boltIdx < numBolts; boltIdx++ {
+		bolt := pState.bolts[boltIdx]
 		for nut := 0; nut < NutsPerBolt-1; nut++ {
 			if bolt.nuts[nut] != bolt.nuts[NutsPerBolt-1] {
 				win = false
@@ -330,7 +379,7 @@ func (pState *State) sortBolts() {
 func compareNuts(bolt1 [NutsPerBolt]byte, bolt2 [NutsPerBolt]byte) bool {
 	for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
 		if bolt1[nutIdx] != bolt2[nutIdx] {
-			return bolt1[nutIdx] < bolt2[nutIdx]
+			return bolt1[nutIdx] > bolt2[nutIdx]
 		}
 	}
 	return false
@@ -401,9 +450,9 @@ func loadFile(path string) State {
 	return state
 }
 
-func (pState *State) printState() {
-	fmt.Printf("%d ", len(pState.moves))
-	for _, bolt := range pState.bolts {
+func (pState *State) printState(numBolts int) {
+	for boltIdx := 0; boltIdx < numBolts; boltIdx++ {
+		bolt := pState.bolts[boltIdx]
 		zero := [...]byte{0}
 		stringBolt := string(bytes.ReplaceAll(bolt.nuts[:], zero[:], []byte("_")))
 		fmt.Printf("%s\t", stringBolt)
