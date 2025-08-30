@@ -195,51 +195,27 @@ func LoadGameState(numBolts int) State {
 
 	var boltList [NumBolts]Bolt
 
-	var x int
-	var y int
+	var nutOffsetX int
+	var nutOffsetY int
+	var nutOffsetVert int
 	if numBolts == 14 {
-		NutStartX := 348
-		NutStartY := 329
-		NutOffsetY := 52
-		BoltOffsetX := 185
-		BoltOffsetY := 300
-		for boltIdx := 0; boltIdx < numBolts; boltIdx++ {
-			boltList[boltIdx].idx = boltIdx
-
-			if boltIdx < 7 {
-				x = NutStartX + boltIdx*BoltOffsetX
-				y = NutStartY
-			} else {
-				x = NutStartX + (boltIdx-7)*BoltOffsetX
-				y = NutStartY + BoltOffsetY
-			}
-			BoltLocations[boltIdx][0] = x
-			BoltLocations[boltIdx][1] = y
-
-			for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
-				pixelColor := robotgo.GetPixelColor(x, y)
-				for colorIdx, colorValue := range colorList {
-					if pixelColor == colorValue {
-						boltList[boltIdx].nuts[nutIdx] = byte(colorIdx) + 0x30
-						break
-					}
-				}
-				y += NutOffsetY
-			}
-		}
+		nutOffsetX = -64
+		nutOffsetY = 33
+		nutOffsetVert = 51
 	} else if numBolts == 11 {
-		nutOffsetX := -90
-		nutOffsetY := 42
-		nutOffsetVert := 68
-		for boltIdx := 0; boltIdx < numBolts; boltIdx++ {
-			boltList[boltIdx].idx = boltIdx
-			for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
-				pixelColor := robotgo.GetPixelColor(BoltLocations[boltIdx][0]+nutOffsetX, BoltLocations[boltIdx][1]+nutOffsetY+nutIdx*nutOffsetVert)
-				for colorIdx, colorValue := range colorList {
-					if pixelColor == colorValue {
-						boltList[boltIdx].nuts[nutIdx] = byte(colorIdx) + 0x30
-						break
-					}
+		nutOffsetX = -90
+		nutOffsetY = 42
+		nutOffsetVert = 68
+	}
+
+	for boltIdx := 0; boltIdx < numBolts; boltIdx++ {
+		boltList[boltIdx].idx = boltIdx
+		for nutIdx := 0; nutIdx < NutsPerBolt; nutIdx++ {
+			pixelColor := robotgo.GetPixelColor(BoltLocations[boltIdx][0]+nutOffsetX, BoltLocations[boltIdx][1]+nutOffsetY+nutIdx*nutOffsetVert)
+			for colorIdx, colorValue := range colorList {
+				if pixelColor == colorValue {
+					boltList[boltIdx].nuts[nutIdx] = byte(colorIdx) + 0x30
+					break
 				}
 			}
 		}
