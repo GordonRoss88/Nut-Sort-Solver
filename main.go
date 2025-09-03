@@ -73,8 +73,8 @@ func main() {
 	fmt.Printf("%d Game state: ", time.Since(startTime).Milliseconds())
 	initialState.printState(numBolts)
 
-	stateChannel = make(chan State, 5000)
-	stateToMovesMap = make(StateToMovesMap, 10000)
+	stateChannel = make(chan State, 10000)
+	stateToMovesMap = make(StateToMovesMap, 12000)
 	stateToMovesMap.addToMap(&initialState, &initialState)
 
 	var state State
